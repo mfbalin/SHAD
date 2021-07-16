@@ -876,6 +876,8 @@ class vector {
   using vector_t = impl::vector<T>;
 
  public:
+  using ObjectID = vector_t::ObjectID;
+
   /// @defgroup Types
   /// @{
   /// The type of the stored value.
@@ -901,6 +903,8 @@ class vector {
   /// @}
 
  public:
+  explicit vector(vector_t::SharedPtr ptr) : ptr(ptr) {}
+
   /// @brief Constructor.
   explicit vector(size_type N = 0) { 
     ptr = vector_t::Create(N);
@@ -1019,8 +1023,12 @@ class vector {
   }
   /// @}
 
+  static vector_t::SharedPtr GetPtr(const ObjectID oid) {
+    return vector_t::GetPtr(oid);
+  }
+
  private:
-  std::shared_ptr<vector_t> ptr = nullptr;
+  vector_t::SharedPtr ptr = nullptr;
 
   const vector_t *impl() const { return ptr.get(); }
 
