@@ -118,7 +118,7 @@ public:
 
  public:
     directed_adjacency_vector()                                 = default;
-    directed_adjacency_vector(indptrObjectID_t indptr_oid, indicesObjectID_t indices_oid, dataObjectID_t edge_data_oid) : 
+    directed_adjacency_vector(indptrObjectID_t indptr_oid, indicesObjectID_t indices_oid, vertex_dataObjectID_t vertex_data_oid, dataObjectID_t edge_data_oid) : 
       indptr(VContainer<size_type>::GetPtr(indptr_oid)),
       indices(EContainer<vertex_key_type>::GetPtr(indices_oid)),
       vertex_data(vertex_data_oid != vertex_dataObjectID_t::kNullID ? VContainer<vertex_value_type>::GetPtr(vertex_data_oid) : nullptr),
@@ -332,6 +332,9 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
 
 }  // namespace impl
 
+
+
+
 template <  typename VV                                        = empty_value,
             typename EV                                        = empty_value,
             typename GV                                        = empty_value,
@@ -370,6 +373,143 @@ struct graph_traits<impl::directed_adjacency_vector<VV, EV, GV, KeyT, VContainer
   using const_vertex_vertex_range = const_vertex_outward_vertex_range;
 
 };
+
+
+template <  typename VV                            = empty_value,
+            typename EV                            = empty_value,
+            typename GV                            = empty_value,
+            typename KeyT                          = std::uint32_t,
+            template <typename V> class VContainer = shad::vector,
+            template <typename E> class EContainer = shad::vector>
+class directed_adjacency_vector {
+  using graph_t = impl::directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EContainer>;
+
+ public:
+  using ObjectID = graph_t::ObjectID;
+
+  /// @defgroup Types
+  /// @{
+  using size_type = typename graph_t::size_type;
+  using graph_value_type = typename graph_t::graph_value_type;
+  using vertex_key_type = typename graph_t::vertex_key_type;
+  using vertex_value_type = typename graph_t::vertex_value_type;
+  using vertex_type = typename graph_t::vertex_type;
+  using edge_key_type = typename graph_t::edge_key_type;
+  using edge_value_type = typename graph_t::edge_value_type;
+  using edge_type = typename graph_t::edge_type;
+
+ public:
+  explicit directed_adjacency_vector(graph_t::SharedPtr ptr) : ptr(ptr) {}
+
+  /// @brief Constructor.
+  explicit directed_adjacency_vector( VContainer<size_type> indptr, EContainer<vertex_key_type> indices, VContainer<vertex_value_type> vertex_data, EContainer<edge_value_type> edge_data) { 
+    ptr = graph_t::Create(indptr.get_oid(), indices.get_oid(), vertex_data.get_oid(), edge_data.get_oid());
+  }
+
+  /// @brief Destructor.
+  ~directed_adjacency_vector() { graph_t::Destroy(impl()->GetGlobalID()); }
+
+  /// @brief The copy assignment operator.
+  ///
+  /// @param O The right-hand side of the operator.
+  /// @return A reference to the left-hand side.
+  directed_adjacency_vector &operator=(const directed_adjacency_vector &O) {
+    impl()->operator=(*O.ptr);
+    return *this;
+  }
+
+ private:
+  graph_t::SharedPtr ptr = nullptr;
+
+  const graph_t *impl() const { return ptr.get(); }
+
+  graph_t *impl() { return ptr.get(); }
+
+  friend bool operator==(const directed_adjacency_vector, const directed_adjacency_vector &RHS) {
+    return *LHS.ptr == *RHS.ptr;
+  }
+
+  friend bool operator<(const directed_adjacency_vector, const directed_adjacency_vector &RHS) {
+    return operator<(*LHS.ptr, *RHS.ptr);
+  }
+
+  friend bool operator>(const directed_adjacency_vector, const directed_adjacency_vector &RHS) {
+    return operator>(*LHS.ptr, *RHS.ptr);
+  }
+
+}
+
+
+struct A {
+  explicit A(int x) {}
+};
+
+struct B : public A {
+  using A::A;
+};
+
+template <class G>
+struct vertex_iterator : public G::vertex_iterator {
+  using G::vertex_iterator::vertex_iterator;
+};
+
+template <class G>
+struct const_vertex_iterator : public G::vertex_iterator {
+  using G::vertex_iterator::vertex_iterator;
+};
+
+template <directed G>
+constexpr auto outward_degree(const G& g, const_vertex_iterator_t<G> u) noexcept
+      //-> vertex_outward_edge_size_t<G> 
+{
+  return G.
+}
+      
+template <directed G>
+constexpr auto outward_edges(G& g, vertex_iterator_t<G> u)
+      -> vertex_outward_edge_range_t<G>;
+template <directed G>
+constexpr auto outward_edges(const G&, const_vertex_iterator_t<G> u) -> const_vertex_outward_edge_range_t<G>;
+template <directed G>
+constexpr auto find_outward_edge(G& g, vertex_iterator_t<G> u, vertex_iterator_t<G> v)
+      -> vertex_outward_edge_iterator_t<G>;
+template <directed G>
+constexpr auto find_outward_edge(const G&, const_vertex_iterator_t<G> u,
+                                 const_vertex_iterator_t<G> v)
+      -> const_vertex_outward_edge_iterator_t<G>;
+template <directed G>
+constexpr auto find_outward_edge(G& g, vertex_key_t<G> ukey, vertex_key_t<G> vkey)
+      -> vertex_outward_edge_iterator_t<G>;
+template <directed G>
+constexpr auto find_outward_edge(const G&, vertex_key_t<G> ukey, vertex_key_t<G> vkey)
+-> const_vertex_outward_edge_iterator_t<G>;
+
+
+// Vertex-Outward-Vertex Functions
+template <directed G>
+constexpr auto outward_vertices(G& g, vertex_iterator_t<G> u)
+      -> vertex_outward_vertex_range_t<G>;
+template <directed G>
+constexpr auto outward_vertices(const G&, const_vertex_iterator_t<G> u) -> const_vertex_outward_vertex_range_t<G>;
+template <directed G>
+constexpr auto
+find_outward_vertex(G& g, vertex_iterator_t<G> u, vertex_iterator_t<G> v)
+      -> vertex_outward_vertex_iterator_t<G>;
+template <directed G>
+constexpr auto find_outward_vertex(const G&, const_vertex_iterator_t<G> u,
+                                   const_vertex_iterator_t<G> v)
+      -> const_vertex_outward_vertex_iterator_t<G>;
+template <directed G>
+constexpr auto find_outward_vertex(G& g, vertex_key_t<G> ukey, vertex_key_t<G> vkey)
+      -> vertex_outward_vertex_iterator_t<G>;
+template <directed G>
+constexpr auto
+find_outward_vertex(const G&, vertex_key_t<G> ukey, vertex_key_t<G> vkey)
+      -> const_vertex_outward_vertex_iterator_t<G>;
+
+// Modifying Functions
+template <directed G>
+constexpr void clear_outward_edges(G& g, vertex_iterator_t<G> u);
 
 }  // namespace shad
 
