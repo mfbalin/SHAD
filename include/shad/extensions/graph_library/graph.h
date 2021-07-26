@@ -50,18 +50,44 @@ template <  typename VV                            = empty_value,
             typename KeyT                          = std::uint32_t,
             template <typename V> class VContainer = shad::vector,
             template <typename E> class EContainer = shad::vector>
-class directed_adjacency_vector {
-  class BaseVertexRef;
-  class VertexRef;
+class directed_adjacency_vector : public AbstractDataStructure {
+  // class BaseVertexRef;
+  // class VertexRef;
 
-  class BaseEdgeRef;
-  class EdgeRef;
+  // class BaseEdgeRef;
+  // class EdgeRef;
+
+ public:
 
   class vertex_iterator;
+  class vertex_range {
+    vertex_iterator b, e;
+
+    vertex_range(vertex_iterator b, vertex_iterator e) : b(b), e(e) {}
+
+    auto begin() {
+      return b;
+    }
+
+    auto end() {
+      return e;
+    }
+  };
 
   class edge_iterator;
+  class edge_range {
+    edge_iterator b, e;
 
-public:
+    edge_range(edge_iterator b, edge_iterator e) : b(b), e(e) {}
+
+    auto begin() {
+      return b;
+    }
+
+    auto end() {
+      return e;
+    }
+  };
 
   using size_type = std::size_t;
   
@@ -117,12 +143,37 @@ public:
   using edge_dataObjectID_t = EContainer<edge_value_type>::ObjectID;
 
  public:
-    directed_adjacency_vector()                                 = default;
-    directed_adjacency_vector(indptrObjectID_t indptr_oid, indicesObjectID_t indices_oid, vertex_dataObjectID_t vertex_data_oid, dataObjectID_t edge_data_oid) : 
-      indptr(VContainer<size_type>::GetPtr(indptr_oid)),
-      indices(EContainer<vertex_key_type>::GetPtr(indices_oid)),
-      vertex_data(vertex_data_oid != vertex_dataObjectID_t::kNullID ? VContainer<vertex_value_type>::GetPtr(vertex_data_oid) : nullptr),
-      edge_data(edge_data_oid != edge_dataObjectID_t::kNullID ? EContainer<edge_value_type>::GetPtr(edge_data_oid) : nullptr) {}
+  directed_adjacency_vector()                                 = default;
+  directed_adjacency_vector(indptrObjectID_t indptr_oid, indicesObjectID_t indices_oid, vertex_dataObjectID_t vertex_data_oid, dataObjectID_t edge_data_oid) : 
+    indptr(VContainer<size_type>::GetPtr(indptr_oid)),
+    indices(EContainer<vertex_key_type>::GetPtr(indices_oid)),
+    vertex_data(vertex_data_oid != vertex_dataObjectID_t::kNullID ? VContainer<vertex_value_type>::GetPtr(vertex_data_oid) : nullptr),
+    edge_data(edge_data_oid != edge_dataObjectID_t::kNullID ? EContainer<edge_value_type>::GetPtr(edge_data_oid) : nullptr) {}
+    
+  auto degree(const vertex_key_type i) const -> vertex_key_type {
+    return indices[i + 1] - indices[i];
+  }
+
+  auto begin() const {
+    return vertex_iterator();
+  }
+
+  auto end() const {
+    return vertex_iterator();
+  }
+
+  auto begin(const vertex_key_type i) const {
+    return edge_iterator();
+  }
+
+  auto end(const vertex_key_type i) const {
+    return begin(i + 1);
+  }
+
+  auto vertex_key(edge_iterator et) const {
+    edge_key_type ei = et;
+    return indices[ei];
+  }
 
  private:
   VContainer<size_type> indptr;
@@ -144,7 +195,6 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
   using reference = typename graph_type::VertexRef;
   using difference_type = std::make_signed_t<graph_type::vertex_key_type>;
   using value_type = typename graph_type::vertex_type;
-  using reference = typename graph_type::VertexRef;
   using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
 
   /// @brief Constructor.
@@ -168,6 +218,11 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
         offset_(std::move(O.offset_)),
         oid_(std::move(O.oid_)),
         p_(std::move(O.p_)) {}
+
+  explicit operator graph_type::vertex_key_type() const {
+    std::uint32_t l = locality_;
+    return offset_ + p_[l];
+  }
 
   /// @brief Copy assignment operator.
   vertex_iterator &operator=(const vertex_iterator &O) {
@@ -330,10 +385,209 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
   prefix_type const *p_;
 };
 
+template <  typename VV                            = empty_value,
+            typename EV                            = empty_value,
+            typename GV                            = empty_value,
+            typename KeyT                          = std::uint32_t,
+            template <typename V> class VContainer = shad::vector,
+            template <typename E> class EContainer = shad::vector>
+class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EContainer>::edge_iterator {
+  using graph_type = directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EContainer>;
+ public:
+  using reference = typename graph_type::VertexRef;
+  using difference_type = std::make_signed_t<graph_type::edge_key_type>;
+  using value_type = typename graph_type::vertex_type;
+  using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
+
+  /// @brief Constructor.
+  edge_iterator(rt::Locality &&l, difference_type offset, ObjectID oid, prefix_type const *p)
+      : locality_(l), offset_(offset), oid_(oid), p_(p) {}
+
+  /// @brief Default constructor.
+  edge_iterator()
+      : edge_iterator(rt::Locality(0), -1, ObjectID::kNullID, nullptr) {}
+
+  /// @brief Copy constructor.
+  edge_iterator(const edge_iterator &O)
+      : locality_(O.locality_),
+        offset_(O.offset_),
+        oid_(O.oid_),
+        p_(O.p_) {}
+
+  /// @brief Move constructor.
+  edge_iterator(const edge_iterator &&O) noexcept
+      : locality_(std::move(O.locality_)),
+        offset_(std::move(O.offset_)),
+        oid_(std::move(O.oid_)),
+        p_(std::move(O.p_)) {}
+
+  explicit operator graph_type::edge_key_type() const {
+    std::uint32_t l = locality_;
+    return offset_ + p_[l];
+  }
+
+  /// @brief Copy assignment operator.
+  edge_iterator &operator=(const edge_iterator &O) {
+    locality_ = O.locality_;
+    offset_ = O.offset_;
+    oid_ = O.oid_;
+    p_ = O.p_;
+
+    return *this;
+  }
+
+  /// @brief Move assignment operator.
+  edge_iterator &operator=(edge_iterator &&O) {
+    locality_ = std::move(O.locality_);
+    offset_ = std::move(O.offset_);
+    oid_ = std::move(O.oid_);
+    p_ = std::move(O.p_);
+
+    return *this;
+  }
+
+  bool operator==(const edge_iterator &O) const {
+    return locality_ == O.locality_ && oid_ == O.oid_ && offset_ == O.offset_;
+  }
+
+  bool operator!=(const edge_iterator &O) const { return !(*this == O); }
+
+  reference operator*() {// @todo
+    return reference(locality_, offset_, oid_);
+  }
+
+  edge_iterator &operator++() {
+    std::uint32_t l = locality_;
+    const auto g_offset = p_[l] + offset_ + 1;
+    if (g_offset < p_[l + 1])
+      ++offset_;
+    else {
+      const auto num_l = rt::numLocalities();
+      while (l < num_l && g_offset >= p_[l + 1])
+        l++;
+      if (l == num_l) {
+        locality_ = rt::Locality(num_l - 1);
+        offset_ = p_[num_l] - p_[num_l - 1];
+      }
+      else {
+        locality_ = rt::Locality(l);
+        offset_ = 0;
+      }
+    }
+    return *this;
+  }
+
+  edge_iterator operator++(int) {
+    edge_iterator tmp(*this);
+    operator++();
+    return tmp;
+  }
+
+  edge_iterator &operator--() {
+    if (offset_ > 0)
+      --offset_;
+    else {
+      std::uint32_t l = locality_;
+      const difference_type g_offset = p_[l] - 1;
+      if (g_offset < 0) {
+        locality_ = rt::Locality(0);
+        offset_ = -1;
+      }
+      else {
+        while(g_offset < p_[l - 1])
+          l--;
+        locality_ = rt::Locality(l - 1);
+        offset_ = p_[l] - p_[l - 1] - 1;
+      }
+    }
+    
+    return *this;
+  }
+
+  edge_iterator operator--(int) {
+    vector_iterator tmp(*this);
+    operator--();
+    return tmp;
+  }
+
+  edge_iterator &operator+=(difference_type n) {
+    const std::uint32_t l = locality_;
+    const auto g_offset = p_[l] + offset_ + n;
+    if (p_[l] <= g_offset && g_offset < p_[l + 1])
+      offset_ += n;
+    else {
+      const auto num_l = rt::numLocalities();
+      const auto l = shad::vector<graph_type::size_type>::lowerbound_index(p_, p_ + num_l + 1, g_offset);
+      if (l < 0) {
+        locality_ = rt::Locality(0);
+        offset_ = -1;
+      }
+      else if (l >= num_l) {
+        locality_ = rt::Locality(num_l - 1);
+        offset_ = p_[num_l] - p_[num_l - 1];
+      }
+      else {
+        locality_ = rt::Locality(l);
+        offset_ = g_offset - p_[l];
+      }
+    }
+
+    return *this;
+  }
+
+  edge_iterator &operator-=(difference_type n) {
+    return operator+=(-n);
+  }
+
+  edge_iterator operator+(difference_type n) {
+    edge_iterator tmp(*this);
+    return tmp.operator+=(n);
+  }
+
+  edge_iterator operator-(difference_type n) {
+    edge_iterator tmp(*this);
+    return tmp.operator-=(n);
+  }
+
+  difference_type operator-(const edge_iterator &O) const {
+    if (oid_ != O.oid_) return std::numeric_limits<difference_type>::min();
+
+    return get_global_id() - O.get_global_id();
+  }
+
+  bool operator<(const edge_iterator &O) const {
+    if (oid_ != O.oid_ || locality_ > O.locality_) return false;
+    return locality_ < O.locality_ || offset_ < O.offset_;
+  }
+
+  bool operator>(const edge_iterator &O) const {
+    if (oid_ != O.oid_ || locality_ < O.locality_) return false;
+    return locality_ > O.locality_ || offset_ > O.offset_;
+  }
+
+  bool operator<=(const edge_iterator &O) const { return !(*this > O); }
+
+  bool operator>=(const edge_iterator &O) const { return !(*this < O); }
+
+  friend std::ostream &operator<<(std::ostream &stream,
+                                  const edge_iterator i) {
+    stream << i.locality_ << " " << i.offset_;
+    return stream;
+  }
+
+ protected:
+  constexpr difference_type get_global_id() const {
+    return p_[to_int(locality_)] + offset_;
+  }
+
+ private:
+  rt::Locality locality_;
+  ObjectID oid_;
+  difference_type offset_;
+  prefix_type const *p_;
+};
+
 }  // namespace impl
-
-
-
 
 template <  typename VV                                        = empty_value,
             typename EV                                        = empty_value,
@@ -418,6 +672,18 @@ class directed_adjacency_vector {
     return *this;
   }
 
+  auto degree(const vertex_key_type i) const {
+    return ptr->degree(i);
+  }
+
+  auto outward_edges(const vertex_key_type i) const {
+    return graph_t::edge_range(ptr->begin(i), ptr->end(i));
+  }
+
+  auto vertices() const {
+    return graph_t::vertex_range(ptr->begin(), ptr->end());
+  }
+
  private:
   graph_t::SharedPtr ptr = nullptr;
 
@@ -458,18 +724,28 @@ struct const_vertex_iterator : public G::vertex_iterator {
   using G::vertex_iterator::vertex_iterator;
 };
 
+template <directed G, typename I>
+  // requires (edge_iterator<G,I> || adjacency_iterator<G,I>)
+constexpr auto vertex(G& g, I uv) // -> vertex_iterator_t<G>;
+{
+  return 
+}
+
 template <directed G>
 constexpr auto outward_degree(const G& g, const_vertex_iterator_t<G> u) noexcept
-      //-> vertex_outward_edge_size_t<G> 
+      // -> vertex_outward_edge_size_t<G> 
 {
-  return G.
+  g::vertex_key_type i = u;
+  return g.degree(i);
 }
       
 template <directed G>
 constexpr auto outward_edges(G& g, vertex_iterator_t<G> u)
-      -> vertex_outward_edge_range_t<G>;
-template <directed G>
-constexpr auto outward_edges(const G&, const_vertex_iterator_t<G> u) -> const_vertex_outward_edge_range_t<G>;
+      // -> vertex_outward_edge_range_t<G>;
+{
+  g::vertex_key_type i = u;
+  return g.outward_edges(i);
+}
 template <directed G>
 constexpr auto find_outward_edge(G& g, vertex_iterator_t<G> u, vertex_iterator_t<G> v)
       -> vertex_outward_edge_iterator_t<G>;
