@@ -155,15 +155,25 @@ class directed_adjacency_vector : public AbstractDataStructure {
   }
 
   auto begin() const {
-    return vertex_iterator();
+    return vertex_iterator(0, 0, oid_, indptr.get_p());
   }
 
   auto end() const {
-    return vertex_iterator();
+    const auto end_l = indptr.locate_index(indptr.size() - 1) - 1;
+    auto p_ = indptr.get_p();
+    difference_type pos = p_[end_l + 1] - p_[end_l];
+
+    rt::Locality last(end_l);
+    return vertex_iterator(std::forward<rt::Locality>(last), pos, oid_, p_);
   }
 
   auto begin(const vertex_key_type i) const {
-    return edge_iterator();
+    auto l = indices.locate_index(i);
+    auto p_ = indices.get_p();
+    difference_type pos = i - p_[l];
+
+    rt::Locality loc(l);
+    return edge_iterator(std::forward<rt::Locality>(loc), pos, oid_, p_);
   }
 
   auto end(const vertex_key_type i) const {
@@ -173,6 +183,11 @@ class directed_adjacency_vector : public AbstractDataStructure {
   auto vertex_key(edge_iterator et) const {
     edge_key_type ei = et;
     return indices[ei];
+  }
+
+  auto vertex(edge_iterator et) const {
+    edge_key_type ei = et;
+    return begin() + indices[ei];
   }
 
  private:
@@ -794,10 +809,6 @@ template <directed G>
 constexpr auto
 find_outward_vertex(const G&, vertex_key_t<G> ukey, vertex_key_t<G> vkey)
       -> const_vertex_outward_vertex_iterator_t<G>;
-
-// Modifying Functions
-template <directed G>
-constexpr void clear_outward_edges(G& g, vertex_iterator_t<G> u);
 
 }  // namespace shad
 

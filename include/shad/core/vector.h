@@ -205,6 +205,16 @@ class vector : public AbstractDataStructure<vector<T>> {
   constexpr size_type max_size() const noexcept { return p_.back(); }
   /// @}
 
+
+  /// @brief Get partition vector
+  /// @return partition vector
+  constexpr difference_type* get_p() const noexcept { return p_.data(); }
+
+  constexpr difference_type locate_index(size_type i) const {
+    return lowerbound_index(p_.cbegin(), p_.cend(), i);
+  }
+
+
   /// @defgroup Element Access
   /// @{
 
@@ -374,10 +384,6 @@ class vector : public AbstractDataStructure<vector<T>> {
   template <typename Iter, typename Int>
   static constexpr difference_type lowerbound_index(Iter begin, Iter end, Int v) {
     return std::distance(begin + 1, std::lower_bound(begin, end, v + 1));
-  }
-
-  constexpr difference_type locate_index(size_type i) const {
-    return lowerbound_index(p_.cbegin(), p_.cend(), i);
   }
 
   constexpr size_type chunk_size() const {
@@ -1007,6 +1013,12 @@ class vector {
   /// @return the maximum size of the container (N).
   constexpr size_type max_size() const noexcept { return impl()->max_size(); }
   /// @}
+
+  /// @brief Get partition vector
+  /// @return partition vector
+  constexpr difference_type* get_p() const noexcept { return impl()->get_p(); }
+
+  constexpr difference_type locate_index(size_type i) const { return impl()->locate_index(i); }
 
   /// @defgroup Operations
   /// @{
