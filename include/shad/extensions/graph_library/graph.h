@@ -250,8 +250,8 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
 
   bool operator!=(const vertex_iterator &O) const { return !(*this == O); }
 
-  reference operator*() {// @todo
-    return reference(locality_, offset_, oid_);
+  auto operator*() {// @todo
+    return this;
   }
 
   vertex_iterator &operator++() {
@@ -371,6 +371,10 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT, VContainer, EConta
                                   const vertex_iterator i) {
     stream << i.locality_ << " " << i.offset_;
     return stream;
+  }
+
+  auto graph_oid() const {
+    return oid_;
   }
 
  protected:
@@ -672,6 +676,10 @@ class directed_adjacency_vector {
     return *this;
   }
 
+  static graph_t::SharedPtr GetPtr(const ObjectID oid) {
+    return graph_t::GetPtr(oid);
+  }
+
   auto degree(const vertex_key_type i) const {
     return ptr->degree(i);
   }
@@ -682,6 +690,10 @@ class directed_adjacency_vector {
 
   auto vertices() const {
     return graph_t::vertex_range(ptr->begin(), ptr->end());
+  }
+
+  auto vertex_key(edge_iterator et) const {
+    return graph_t::vertex_key(et);
   }
 
  private:
