@@ -25,6 +25,7 @@
 #include <iostream>
 #include <iomanip>
 #include <random>
+#include <atomic>
 
 #include "shad/core/vector.h"
 #include "shad/core/algorithm.h"
@@ -34,28 +35,29 @@
 
 namespace shad {
 
-struct empty_value {};
-
 int main(int argc, char *argv[]) {
 
   shad::vector<uint64_t> indptr, indices;
   shad::vector<empty_value> vdata, edata;
 
-  shad::directed_adjacency_vector G(indptr, indices, vdata, edata);
+  shad::directed_adjacency_vector<empty_value, empty_value, empty_value, uint64_t> G(indptr, indices, vdata, edata);
+  using graph_t = decltype(G);
+
+  static std::atomic<std::size_t> cnt = 0;
 
   auto vertices = G.vertices();
-  shad::for_each(shad::distributed_parallel_tag{}, vertices.begin(), vertices.end(), [](shad::vertex_iterator v) {
-    auto g_oid = v.graph_oid();
-    auto G = shad::directed_adjacency_vector::GetPtr(g_oid);
+  shad::for_each(shad::distributed_parallel_tag{}, vertices.begin(), vertices.end(), [](shad::vertex_iterator_t<graph_t> v) {
+    auto g_oid = v.get_oid();
+    auto G = graph_t::GetPtr(g_oid);
     auto edges = outward_edges(G, v);
-    shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator e) {
-      auto g_oid = e.graph_oid();
-      auto G = shad::directed_adjacency_vector::GetPtr(g_oid);
+    shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator_t<graph_t> e) {
+      auto g_oid = e.get_oid();
+      auto G = graph_t::GetPtr(g_oid);
       auto u = vertex(G, e);
       auto edges = outward_edges(G, u);
-      shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator e) {
-          auto g_oid = e.graph_oid();
-          auto G = shad::directed_adjacency_vector::GetPtr(g_oid);
+      shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator_t<graph_t> e) {
+          auto g_oid = e.get_oid();
+          auto G = graph_t::GetPtr(g_oid);
           auto w = vertex(G, e);
           auto it = find_outward_edge(G, v, w);
           if (it)

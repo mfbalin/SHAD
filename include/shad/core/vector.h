@@ -26,12 +26,18 @@
 #define INCLUDE_SHAD_CORE_VECTOR_H_
 
 #include <cstdlib>
+#include <cstddef>
 
 #include "shad/data_structures/abstract_data_structure.h"
 #include "shad/distributed_iterator_traits.h"
 #include "shad/runtime/runtime.h"
 
 namespace shad {
+
+template <typename Iter, typename Int>
+constexpr std::ptrdiff_t lowerbound_index(Iter begin, Iter end, Int v) {
+  return std::distance(begin + 1, std::lower_bound(begin, end, v + 1));
+}
 
 namespace impl {
 /// @brief Distributed vector without resizing capabilities.
@@ -379,12 +385,11 @@ class vector : public AbstractDataStructure<vector<T>> {
       }, GetGlobalID());
   }
 
- protected:
-
-  template <typename Iter, typename Int>
-  static constexpr difference_type lowerbound_index(Iter begin, Iter end, Int v) {
-    return std::distance(begin + 1, std::lower_bound(begin, end, v + 1));
+  constexpr ObjectID get_oid() const {
+    return oid_;
   }
+
+ protected:
 
   constexpr size_type chunk_size() const {
       return p_[to_int(rt::thisLocality()) + 1] - p_[to_int(rt::thisLocality())];
@@ -710,7 +715,7 @@ class alignas(64) vector<T>::vector_iterator {
       offset_ += n;
     else {
       const auto num_l = rt::numLocalities();
-      const auto l = vector<T>::lowerbound_index(p_, p_ + num_l + 1, g_offset);
+      const auto l = lowerbound_index(p_, p_ + num_l + 1, g_offset);
       if (l < 0) {
         locality_ = rt::Locality(0);
         offset_ = -1;
@@ -880,9 +885,10 @@ class alignas(64) vector<T>::vector_iterator {
 template <class T>
 class vector {
   using vector_t = impl::vector<T>;
+  using SharedPtr = typename vector_t::SharedPtr;
 
  public:
-  using ObjectID = vector_t::ObjectID;
+  using ObjectID = typename vector_t::ObjectID;
 
   /// @defgroup Types
   /// @{
@@ -909,7 +915,7 @@ class vector {
   /// @}
 
  public:
-  explicit vector(vector_t::SharedPtr ptr) : ptr(ptr) {}
+  explicit vector(SharedPtr ptr) : ptr(ptr) {}
 
   /// @brief Constructor.
   explicit vector(size_type N = 0) { 
@@ -1018,6 +1024,8 @@ class vector {
   /// @return partition vector
   constexpr difference_type* get_p() const noexcept { return impl()->get_p(); }
 
+  constexpr ObjectID get_oid() const noexcept { return impl()->get_oid(); }
+
   constexpr difference_type locate_index(size_type i) const { return impl()->locate_index(i); }
 
   /// @defgroup Operations
@@ -1035,12 +1043,12 @@ class vector {
   }
   /// @}
 
-  static vector_t::SharedPtr GetPtr(const ObjectID oid) {
+  static SharedPtr GetPtr(const ObjectID oid) {
     return vector_t::GetPtr(oid);
   }
 
  private:
-  vector_t::SharedPtr ptr = nullptr;
+  SharedPtr ptr = nullptr;
 
   const vector_t *impl() const { return ptr.get(); }
 
