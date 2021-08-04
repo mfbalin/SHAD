@@ -200,6 +200,12 @@ class directed_adjacency_vector : public AbstractDataStructure<directed_adjacenc
     return begin() + indices[ei];
   }
 
+  bool find_outward_edge(const vertex_iterator u, const vertex_iterator v) const {
+    auto begin = indices.begin() + indptr[(vertex_key_type)u];
+    auto end = indices.begin() + indptr[(vertex_key_type)u + 1];
+    return end != shad::find(shad::distributed_parallel_tag{}, begin, end, (vertex_key_type)v);
+  }
+
  private:
   ObjectID oid_;
   VContainer<size_type> indptr;
@@ -614,8 +620,8 @@ class directed_adjacency_vector {
     return edge_range(ptr->begin(i), ptr->end(i));
   }
 
-  bool find_outward_edge(const vertex_key_type u, const vertex_key_type v) const {
-    return std::binary_search(ptr->begin(u), ptr->end(u), v);
+  bool find_outward_edge(const vertex_iterator u, const vertex_iterator v) const {
+    return ptr->find_outward_edge(u, v);
   }
 
   vertex_range vertices() const {

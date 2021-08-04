@@ -844,7 +844,7 @@ class alignas(64) vector<T>::vector_iterator {
 
     return vector_iterator(rt::thisLocality(),
                           std::distance(B.get_local_chunk(), itr), B.oid_,
-                          B.get_local_chunk(), B.p_);
+                          B.ptrs_, B.p_);
   }
 
  protected:

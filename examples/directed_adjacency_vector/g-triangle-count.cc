@@ -35,6 +35,25 @@
 
 namespace shad {
 
+template <typename F>
+struct lambda_wrapper {
+ lambda_wrapper() = default;
+ 
+ lambda_wrapper(F const& f) { std::memcpy(buffer, &f, sizeof(F)); }
+ 
+ template <typename... Ts>
+ auto operator()(Ts&&... ts) {
+ return (*reinterpret_cast<F*>(buffer))(std::forward<Ts>(ts)...);
+ }
+ 
+ template <typename... Ts>
+ auto operator()(Ts&&... ts) const {
+ return (*reinterpret_cast<F const*>(buffer))(std::forward<Ts>(ts)...);
+ }
+ 
+ std::uint8_t buffer[sizeof(F)];
+};
+
 int main(int argc, char *argv[]) {
 
   shad::vector<uint64_t> indptr, indices;
@@ -50,20 +69,20 @@ int main(int argc, char *argv[]) {
     auto g_oid = v.get_oid();
     auto G = graph_t::GetPtr(g_oid);
     auto edges = outward_edges(G, v);
-    shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator_t<graph_t> e) {
+    shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), lambda_wrapper([v](shad::edge_iterator_t<graph_t> e) {
       auto g_oid = e.get_oid();
       auto G = graph_t::GetPtr(g_oid);
       auto u = vertex(G, e);
       auto edges = outward_edges(G, u);
-      shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), [](shad::edge_iterator_t<graph_t> e) {
+      shad::for_each(shad::distributed_parallel_tag{}, edges.begin(), edges.end(), lambda_wrapper([v](shad::edge_iterator_t<graph_t> e) {
           auto g_oid = e.get_oid();
           auto G = graph_t::GetPtr(g_oid);
           auto w = vertex(G, e);
           auto it = find_outward_edge(G, v, w);
           if (it)
             cnt++;
-      });
-    });
+      }));
+    }));
   });
 
   return 0;
