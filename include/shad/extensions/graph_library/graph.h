@@ -227,6 +227,12 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
   using value_type = typename graph_type::vertex_type;
   using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
 
+  using iterator_category = std::random_access_iterator_tag;
+
+  using local_iterator_type = vertex_iterator;
+
+  using distribution_range = std::vector<std::pair<rt::Locality, size_t>>;
+
   /// @brief Constructor.
   vertex_iterator(difference_type offset, ObjectID oid)
       : offset_(offset), oid_(oid) {}
@@ -339,6 +345,83 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
 
   bool operator>=(const vertex_iterator &O) const { return !(*this < O); }
 
+  class local_iterator_range {
+   public:
+    local_iterator_range(local_iterator_type B, local_iterator_type E)
+        : begin_(B), end_(E) {}
+    local_iterator_type begin() { return begin_; }
+    local_iterator_type end() { return end_; }
+
+   private:
+    local_iterator_type begin_;
+    local_iterator_type end_;
+  };
+
+  static local_iterator_range local_range(vertex_iterator &B,
+                                          vertex_iterator &E) {
+    auto begin{B.get_local_chunk()};
+    
+    if (B.oid_ != E.oid_ || rt::thisLocality() < B.get_locality() || rt::thisLocality() > E.get_locality())
+      return local_iterator_range(begin, begin);
+
+    if (B.get_locality() == rt::thisLocality())
+      begin += B.offset_;
+    
+    auto p = B.get_p();
+
+    const std::uint32_t l = rt::thisLocality();
+    const auto chunk = p[l + 1] - p[l];
+
+    auto end{B.get_local_chunk() + chunk};
+    if (E.get_locality() == rt::thisLocality())
+      end = B.get_local_chunk() + E.offset_;
+    return local_iterator_range(begin, end);
+  }
+
+  static distribution_range
+      distribution(vertex_iterator &begin, vertex_iterator &end) {
+    distribution_range result;
+
+    // First block:
+    const std::uint32_t begin_l = begin.get_locality();
+    auto p = begin.get_p();
+    const auto start_block_size = p[begin_l + 1] - p[begin_l];
+    if (begin.get_locality() == end.get_locality())
+      start_block_size = end.offset_;
+    result.push_back(std::make_pair(begin.get_locality(),
+                                    start_block_size - begin.offset_));
+
+    // Middle blocks:
+    for (auto locality = begin.get_locality() + 1;
+         locality < end.get_locality(); ++locality) {
+      const std::uint32_t mid_l = locality;
+      const auto inner_block_size = p[mid_l + 1] - p[mid_l];
+      result.push_back(std::make_pair(locality, inner_block_size));
+    }
+
+    // Last block:
+    if (end.offset_ != 0 && begin.get_locality() != end.get_locality())
+      result.push_back(std::make_pair(end.get_locality(), end.offset_));
+
+    return result;
+  }
+
+  static rt::localities_range localities(vertex_iterator &B, vertex_iterator &E) {
+    return rt::localities_range(
+        B.get_locality(), rt::Locality(static_cast<uint32_t>(E.get_locality()) + (E.offset_ != 0 ? 1 : 0)));
+  }
+
+  static vertex_iterator iterator_from_local(vertex_iterator &B,
+                                            vertex_iterator &E,
+                                            local_iterator_type itr) {
+    if (rt::thisLocality() < B.get_locality() || rt::thisLocality() > E.get_locality())
+      return E;
+
+    return vertex_iterator(rt::thisLocality(),
+                          std::distance(B.get_local_chunk(), itr), B.oid_,
+                          B.ptrs_, B.p_);
+  }
+
   friend std::ostream &operator<<(std::ostream &stream,
                                   const vertex_iterator i) {
     stream << i.offset_;
@@ -355,6 +438,23 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
   }
 
  private:
+
+  auto get_p() const {
+    auto g = graph_type::GetPtr(oid_);
+    return g.indptr.get_p();
+  }
+
+  rt::Locality get_locality() const {
+    auto p = get_p();
+    return shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_);
+  }
+
+  vertex_iterator get_local_chunk() const {
+    auto p = get_p();
+    int l = rt::thisLocality();
+    return vertex_iterator(p[l], oid_);
+  }
+
   ObjectID oid_;
   difference_type offset_;
 };
@@ -370,6 +470,12 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
   using difference_type = std::make_signed_t<graph_type::edge_key_type>;
   using value_type = typename graph_type::vertex_type;
   using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
+
+  using iterator_category = std::random_access_iterator_tag;
+
+  using local_iterator_type = edge_iterator;
+
+  using distribution_range = std::vector<std::pair<rt::Locality, size_t>>;
 
   /// @brief Constructor.
   edge_iterator(difference_type offset, ObjectID oid)
@@ -487,6 +593,80 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
 
   bool operator>=(const edge_iterator &O) const { return !(*this < O); }
 
+  class local_iterator_range {
+   public:
+    local_iterator_range(local_iterator_type B, local_iterator_type E)
+        : begin_(B), end_(E) {}
+    local_iterator_type begin() { return begin_; }
+    local_iterator_type end() { return end_; }
+
+   private:
+    local_iterator_type begin_;
+    local_iterator_type end_;
+  };
+
+  static local_iterator_range local_range(edge_iterator &B,
+                                          edge_iterator &E) {
+    auto begin{B.get_local_chunk()};
+    
+    if (B.oid_ != E.oid_ || rt::thisLocality() < B.get_locality() || rt::thisLocality() > E.get_locality())
+      return local_iterator_range(begin, begin);
+
+    if (B.get_locality() == rt::thisLocality())
+      begin += B.offset_;
+
+    const std::uint32_t l = rt::thisLocality();
+    const auto chunk = B.p_[l + 1] - B.p_[l];
+
+    auto end{B.get_local_chunk() + chunk};
+    if (E.get_locality() == rt::thisLocality())
+      end = B.get_local_chunk() + E.offset_;
+    return local_iterator_range(begin, end);
+  }
+
+  static distribution_range
+      distribution(edge_iterator &begin, edge_iterator &end) {
+    distribution_range result;
+
+    // First block:
+    const std::uint32_t begin_l = begin.get_locality();
+    const auto start_block_size = begin.p_[begin_l + 1] - begin.p_[begin_l];
+    if (begin.get_locality() == end.get_locality())
+      start_block_size = end.offset_;
+    result.push_back(std::make_pair(begin.get_locality(),
+                                    start_block_size - begin.offset_));
+
+    // Middle blocks:
+    for (auto locality = begin.get_locality() + 1;
+         locality < end.get_locality(); ++locality) {
+      const std::uint32_t mid_l = locality;
+      const auto inner_block_size = begin.p_[mid_l + 1] - begin.p_[mid_l];
+      result.push_back(std::make_pair(locality, inner_block_size));
+    }
+
+    // Last block:
+    if (end.offset_ != 0 && begin.get_locality() != end.get_locality())
+      result.push_back(std::make_pair(end.get_locality(), end.offset_));
+
+    return result;
+  }
+
+  static rt::localities_range localities(edge_iterator &B, edge_iterator &E) {
+    return rt::localities_range(
+        B.get_locality(), rt::Locality(static_cast<uint32_t>(E.get_locality()) + (E.offset_ != 0 ? 1 : 0)));
+  }
+
+  static edge_iterator iterator_from_local(edge_iterator &B,
+                                            edge_iterator &E,
+                                            local_iterator_type itr) {
+    if (rt::thisLocality() < B.get_locality() || rt::thisLocality() > E.get_locality())
+      return E;
+
+    return edge_iterator(rt::thisLocality(),
+                          std::distance(B.get_local_chunk(), itr), B.oid_,
+                          B.ptrs_, B.p_);
+  }
+  
   friend std::ostream &operator<<(std::ostream &stream,
                                   const edge_iterator i) {
     stream << i.offset_;
@@ -499,6 +679,20 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
   }
 
  private:
+
+  rt::Locality get_locality() const {
+    auto g = graph_type::GetPtr(oid_);
+    auto p = g.indptr.get_p();
+    return shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_);
+  }
+
+  vertex_iterator get_local_chunk() const {
+    auto g = graph_type::GetPtr(oid_);
+    auto p = g.indptr.get_p();
+    int l = rt::thisLocality();
+    return vertex_iterator(p[l], oid_);
+  }
+
   ObjectID oid_;
   difference_type offset_;
 };
