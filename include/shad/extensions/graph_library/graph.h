@@ -222,12 +222,13 @@ template <  typename VV,
 class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
   using graph_type = directed_adjacency_vector<VV, EV, GV, KeyT>;
  public:
-  // using reference = typename graph_type::VertexRef;
   using difference_type = std::make_signed_t<graph_type::vertex_key_type>;
   using value_type = typename graph_type::vertex_type;
-  using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
-
+  using pointer = vertex_iterator;
+  using reference = vertex_iterator;
   using iterator_category = std::random_access_iterator_tag;
+
+  using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
 
   using local_iterator_type = vertex_iterator;
 
@@ -277,8 +278,8 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
 
   bool operator!=(const vertex_iterator &O) const { return !(*this == O); }
 
-  auto operator*() {// @todo
-    return this;
+  auto operator*() const {// @todo
+    return *this;
   }
 
   vertex_iterator &operator++() {
@@ -357,6 +358,8 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
     local_iterator_type end_;
   };
 
+  using partition_range = local_iterator_range;
+
   static local_iterator_range local_range(vertex_iterator &B,
                                           vertex_iterator &E) {
     auto begin{B.get_local_chunk()};
@@ -422,6 +425,33 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
                           B.ptrs_, B.p_);
   }
 
+  // split a range into at most n sub-ranges
+  static std::vector<local_iterator_range> partitions(local_iterator_type begin, local_iterator_type end, size_t n) {
+    auto range_len = std::distance(begin, end);
+    auto n_parts = std::min(n, static_cast<size_t>(range_len));
+    std::vector<local_iterator_range> res;
+    if (n_parts) {
+      auto block_size = (range_len + n_parts - 1) / n_parts;
+      for (size_t block_id = 0; block_id < n_parts; ++block_id) {
+        auto block_begin = begin;
+        std::advance(block_begin, block_id * block_size);
+        auto block_end = block_begin;
+        if (std::distance(block_begin, end) < block_size) {
+          if (block_begin != end) {
+            res.push_back(local_iterator_range{block_begin, end});
+          }
+          break;
+        } else {
+          std::advance(block_end, block_size);
+          assert(block_begin != block_end);
+          res.push_back(local_iterator_range{block_begin, block_end});
+        }
+      }
+      assert(res.back().end() == end);
+    }
+    return res;
+  }
+
   friend std::ostream &operator<<(std::ostream &stream,
                                   const vertex_iterator i) {
     stream << i.offset_;
@@ -441,17 +471,17 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::vertex_iterator {
 
   auto get_p() const {
     auto g = graph_type::GetPtr(oid_);
-    return g.indptr.get_p();
+    return g->indptr.get_p();
   }
 
   rt::Locality get_locality() const {
     auto p = get_p();
-    return shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_);
+    return rt::Locality{(uint32_t)shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_)};
   }
 
   vertex_iterator get_local_chunk() const {
     auto p = get_p();
-    int l = rt::thisLocality();
+    uint32_t l = rt::thisLocality();
     return vertex_iterator(p[l], oid_);
   }
 
@@ -466,12 +496,13 @@ template <  typename VV,
 class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
   using graph_type = directed_adjacency_vector<VV, EV, GV, KeyT>;
  public:
-  // using reference = typename graph_type::VertexRef;
   using difference_type = std::make_signed_t<graph_type::edge_key_type>;
-  using value_type = typename graph_type::vertex_type;
-  using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
-
+  using value_type = typename graph_type::edge_iterator;
+  using pointer = edge_iterator;
+  using reference = edge_iterator;
   using iterator_category = std::random_access_iterator_tag;
+
+  using prefix_type = typename VContainer<graph_type::size_type>::difference_type;
 
   using local_iterator_type = edge_iterator;
 
@@ -521,7 +552,7 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
 
   bool operator!=(const edge_iterator &O) const { return !(*this == O); }
 
-  edge_iterator operator*() {// @todo
+  edge_iterator operator*() const {// @todo
     return *this;
   }
 
@@ -605,6 +636,8 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
     local_iterator_type end_;
   };
 
+  using partition_range = local_iterator_range;
+
   static local_iterator_range local_range(edge_iterator &B,
                                           edge_iterator &E) {
     auto begin{B.get_local_chunk()};
@@ -614,9 +647,11 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
 
     if (B.get_locality() == rt::thisLocality())
       begin += B.offset_;
+    
+    auto p = B.get_p();
 
     const std::uint32_t l = rt::thisLocality();
-    const auto chunk = B.p_[l + 1] - B.p_[l];
+    const auto chunk = p[l + 1] - p[l];
 
     auto end{B.get_local_chunk() + chunk};
     if (E.get_locality() == rt::thisLocality())
@@ -630,7 +665,8 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
 
     // First block:
     const std::uint32_t begin_l = begin.get_locality();
-    const auto start_block_size = begin.p_[begin_l + 1] - begin.p_[begin_l];
+    auto p = begin.get_p();
+    const auto start_block_size = p[begin_l + 1] - p[begin_l];
     if (begin.get_locality() == end.get_locality())
       start_block_size = end.offset_;
     result.push_back(std::make_pair(begin.get_locality(),
@@ -640,7 +676,7 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
     for (auto locality = begin.get_locality() + 1;
          locality < end.get_locality(); ++locality) {
       const std::uint32_t mid_l = locality;
-      const auto inner_block_size = begin.p_[mid_l + 1] - begin.p_[mid_l];
+      const auto inner_block_size = p[mid_l + 1] - p[mid_l];
       result.push_back(std::make_pair(locality, inner_block_size));
     }
 
@@ -666,6 +702,33 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
                           std::distance(B.get_local_chunk(), itr), B.oid_,
                           B.ptrs_, B.p_);
   }
+
+  // split a range into at most n sub-ranges
+  static std::vector<local_iterator_range> partitions(local_iterator_type begin, local_iterator_type end, size_t n) {
+    auto range_len = std::distance(begin, end);
+    auto n_parts = std::min(n, static_cast<size_t>(range_len));
+    std::vector<local_iterator_range> res;
+    if (n_parts) {
+      auto block_size = (range_len + n_parts - 1) / n_parts;
+      for (size_t block_id = 0; block_id < n_parts; ++block_id) {
+        auto block_begin = begin;
+        std::advance(block_begin, block_id * block_size);
+        auto block_end = block_begin;
+        if (std::distance(block_begin, end) < block_size) {
+          if (block_begin != end) {
+            res.push_back(local_iterator_range{block_begin, end});
+          }
+          break;
+        } else {
+          std::advance(block_end, block_size);
+          assert(block_begin != block_end);
+          res.push_back(local_iterator_range{block_begin, block_end});
+        }
+      }
+      assert(res.back().end() == end);
+    }
+    return res;
+  }
   
   friend std::ostream &operator<<(std::ostream &stream,
                                   const edge_iterator i) {
@@ -680,17 +743,20 @@ class alignas(64) directed_adjacency_vector<VV, EV, GV, KeyT>::edge_iterator {
 
  private:
 
-  rt::Locality get_locality() const {
+  auto get_p() const {
     auto g = graph_type::GetPtr(oid_);
-    auto p = g.indptr.get_p();
-    return shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_);
+    return g->indptr.get_p();
   }
 
-  vertex_iterator get_local_chunk() const {
-    auto g = graph_type::GetPtr(oid_);
-    auto p = g.indptr.get_p();
-    int l = rt::thisLocality();
-    return vertex_iterator(p[l], oid_);
+  rt::Locality get_locality() const {
+    auto p = get_p();
+    return rt::Locality{(uint32_t)shad::lowerbound_index(p, p + rt::numLocalities() + 1, offset_)};
+  }
+
+  edge_iterator get_local_chunk() const {
+    auto p = get_p();
+    uint32_t l = rt::thisLocality();
+    return edge_iterator(p[l], oid_);
   }
 
   ObjectID oid_;
@@ -730,14 +796,6 @@ struct graph_traits {
 
   // using vertex_vertex_range = vertex_outward_vertex_range;
   // using const_vertex_vertex_range = const_vertex_outward_vertex_range;
-};
-
-struct A {
-  explicit A(int x) {}
-};
-
-struct B : public A {
-  using A::A;
 };
 
 template <class G>

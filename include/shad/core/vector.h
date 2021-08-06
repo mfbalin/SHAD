@@ -214,7 +214,7 @@ class vector : public AbstractDataStructure<vector<T>> {
 
   /// @brief Get partition vector
   /// @return partition vector
-  constexpr difference_type* get_p() const noexcept { return p_.data(); }
+  constexpr difference_type const* get_p() const noexcept { return p_.data(); }
 
   constexpr difference_type locate_index(size_type i) const {
     return lowerbound_index(p_.cbegin(), p_.cend(), i);
@@ -1022,7 +1022,7 @@ class vector {
 
   /// @brief Get partition vector
   /// @return partition vector
-  constexpr difference_type* get_p() const noexcept { return impl()->get_p(); }
+  constexpr difference_type const* get_p() const noexcept { return impl()->get_p(); }
 
   constexpr ObjectID get_oid() const noexcept { return impl()->get_oid(); }
 
